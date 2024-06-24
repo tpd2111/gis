@@ -14,7 +14,6 @@
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-omnivore@0.3.3/leaflet-omnivore.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
     <script>
         // Initialize the Map
         const map = L.map('map').setView([54.0, -2.0], 6);
@@ -62,20 +61,25 @@
                         layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
                     }
                 });
-                omnivore.wfs(newLayerUrl, {}, newLayer).addTo(map);
+                omnivore.wfs(newLayerUrl, {
+                    layers: layerName,
+                    format: 'geojson'
+                }, newLayer).addTo(map);
                 layers[layerName] = newLayer;
                 layerControl.addOverlay(newLayer, layerName);
                 localStorage.setItem(layerName, newLayerUrl); // Save to local storage
+                updateLayerDropdown(); // Update dropdown list
             }
         }
 
         function removeLayer() {
-            const layerName = prompt('Enter Layer Name to Remove:');
+            const layerName = document.getElementById('layerSelect').value;
             if (layers[layerName]) {
                 map.removeLayer(layers[layerName]);
                 layerControl.removeLayer(layers[layerName]);
                 delete layers[layerName];
                 localStorage.removeItem(layerName); // Remove from local storage
+                updateLayerDropdown(); // Update dropdown list
             } else {
                 alert('Layer not found!');
             }
@@ -88,6 +92,7 @@
                 const container = L.DomUtil.create('div', 'custom-control');
                 container.innerHTML = `
                     <button onclick="addLayer()">Add Layer</button>
+                    <select id="layerSelect"></select>
                     <button onclick="removeLayer()">Remove Layer</button>
                 `;
                 return container;
@@ -117,10 +122,26 @@
                         layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
                     }
                 });
-                omnivore.wfs(newLayerUrl, {}, newLayer).addTo(map);
+                omnivore.wfs(newLayerUrl, {
+                    layers: layerName,
+                    format: 'geojson'
+                }, newLayer).addTo(map);
                 layers[layerName] = newLayer;
                 layerControl.addOverlay(newLayer, layerName);
+                updateLayerDropdown(); // Update dropdown list
             }
+        }
+
+        // Update Layer Dropdown List
+        function updateLayerDropdown() {
+            const layerSelect = document.getElementById('layerSelect');
+            layerSelect.innerHTML = '';
+            Object.keys(layers).forEach(layerName => {
+                const option = document.createElement('option');
+                option.value = layerName;
+                option.textContent = layerName;
+                layerSelect.appendChild(option);
+            });
         }
     </script>
 </body>
