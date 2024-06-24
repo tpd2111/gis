@@ -1,113 +1,79 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Leaflet Map with Flood Zones</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw/dist/leaflet.draw.css" />
+    <meta charset="UTF-8">
+    <title>OpenLayers Web Map</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ol3/4.6.5/ol.css">
     <style>
-        #map { height: 600px; }
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+        .ol-layer-switcher {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+        }
     </style>
 </head>
 <body>
-    <div id="map"></div>
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-draw/dist/leaflet.draw.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+    <div id="map" class="map"></div>
+    <div class="ol-layer-switcher" id="layer-switcher">
+        <label>
+            <input type="checkbox" id="flood-zone-layer" checked> Flood Zone 2
+        </label>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ol3/4.6.5/ol.js"></script>
     <script>
-        // Initialize the map
-        var map = L.map('map').setView([54.0, -2.0], 6); // Centered on the UK
+        // Define base layer
+        var osmLayer = new ol.layer.Tile({
+            source: new ol.source.OSM(),
+            title: 'OSM Base Map'
+        });
 
-        // Add a base layer (OpenStreetMap)
-        var baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19
-        }).addTo(map);
-
-        // Layer group for WFS layer
-        var floodLayerGroup = L.layerGroup();
-
-        // Function to load WFS layer
-        function loadWfsLayer() {
-            if (map.getZoom() >= 12) {
-                $.ajax({
-                    url: "https://environment.data.gov.uk/spatialdata/flood-map-for-planning-rivers-and-sea-flood-zone-2/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=flood-map-for-planning-rivers-and-sea-flood-zone-2&outputFormat=application/json",
-                    success: function(data) {
-                        var geojsonLayer = L.geoJSON(data, {
-                            onEachFeature: function (feature, layer) {
-                                layer.bindPopup("Flood Zone 2: " + feature.properties.description);
-                            }
-                        });
-                        floodLayerGroup.clearLayers();
-                        floodLayerGroup.addLayer(geojsonLayer);
-                        map.addLayer(floodLayerGroup);
-                    }
-                });
-            } else {
-                map.removeLayer(floodLayerGroup);
-            }
-        }
-
-        // Load WFS layer based on zoom level
-        map.on('zoomend', loadWfsLayer);
-
-        // Initialize the Draw Control
-        var drawnItems = new L.FeatureGroup().addTo(map);
-        var drawControl = new L.Control.Draw({
-            draw: {
-                polyline: true,
-                polygon: true,
-                marker: false,
-                circle: false,
-                rectangle: false,
-                circlemarker: false
+        // Define WFS layer for Flood Zone 2
+        var wfsSource = new ol.source.Vector({
+            format: new ol.format.WFS(),
+            url: function(extent) {
+                return 'https://environment.data.gov.uk/spatialdata/flood-map-for-planning-rivers-and-sea-flood-zone-2/wfs?' +
+                       'service=WFS&version=1.1.0&request=GetFeature&typename=flood-zone-2' +
+                       '&outputFormat=application/json&srsname=EPSG:3857&bbox=' + extent.join(',') + ',EPSG:3857';
             },
-            edit: {
-                featureGroup: drawnItems
+            strategy: ol.loadingstrategy.bbox
+        });
+
+        var floodZoneLayer = new ol.layer.Vector({
+            source: wfsSource,
+            title: 'Flood Zone 2'
+        });
+
+        // Define map and add layers
+        var map = new ol.Map({
+            target: 'map',
+            layers: [osmLayer, floodZoneLayer],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([-1.548567, 53.800755]), // Center on UK
+                zoom: 6
+            })
+        });
+
+        // Layer control
+        var floodZoneCheckbox = document.getElementById('flood-zone-layer');
+        floodZoneCheckbox.addEventListener('change', function() {
+            floodZoneLayer.setVisible(this.checked);
+        });
+
+        // Load WFS layer only at appropriate zoom level
+        map.getView().on('change:resolution', function() {
+            var zoom = map.getView().getZoom();
+            if (zoom >= 10) {
+                floodZoneLayer.setVisible(true);
+            } else {
+                floodZoneLayer.setVisible(false);
             }
         });
-        map.addControl(drawControl);
-
-        // Handle the creation of new layers (polygons/lines)
-        map.on(L.Draw.Event.CREATED, function (e) {
-            var layer = e.layer;
-            drawnItems.addLayer(layer);
-            analyzeLayer(layer);
-        });
-
-        // Function to analyze interaction with WFS features
-        function analyzeLayer(layer) {
-            var drawnFeatures = layer.toGeoJSON();
-            var intersectedFeatures = [];
-
-            $.ajax({
-                url: "https://environment.data.gov.uk/spatialdata/flood-map-for-planning-rivers-and-sea-flood-zone-2/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=flood-map-for-planning-rivers-and-sea-flood-zone-2&outputFormat=application/json",
-                success: function(data) {
-                    var floodFeatures = data.features;
-
-                    floodFeatures.forEach(function(floodFeature) {
-                        if (turf.booleanIntersects(drawnFeatures, floodFeature)) {
-                            intersectedFeatures.push(floodFeature);
-                        }
-                    });
-
-                    // Display summary
-                    alert("Number of intersected flood features: " + intersectedFeatures.length);
-                }
-            });
-        }
-
-        // Add layer control
-        var baseMaps = {
-            "Base Map": baseLayer
-        };
-
-        var overlayMaps = {
-            "Flood Zones": floodLayerGroup
-        };
-
-        L.control.layers(baseMaps, overlayMaps).addTo(map);
     </script>
 </body>
 </html>
