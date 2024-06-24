@@ -15,28 +15,37 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw/dist/leaflet.draw.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://unpkg.com/leaflet-omnivore/leaflet-omnivore.min.js"></script>
     <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
     <script>
         // Initialize the map
         var map = L.map('map').setView([54.0, -2.0], 6); // Centered on the UK
 
         // Add a base layer (OpenStreetMap)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        var baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19
         }).addTo(map);
 
-        // WFS Layer
-        var wfsLayer = null;
+        // Layer group for WFS layer
+        var floodLayerGroup = L.layerGroup();
+
+        // Function to load WFS layer
         function loadWfsLayer() {
-            if (map.getZoom() >= 12 && !wfsLayer) {
-                wfsLayer = omnivore.wfs("https://environment.data.gov.uk/spatialdata/flood-map-for-planning-rivers-and-sea-flood-zone-2/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=flood-map-for-planning-rivers-and-sea-flood-zone-2&outputFormat=application/json")
-                    .on('ready', function() {
-                        wfsLayer.addTo(map);
-                    });
-            } else if (map.getZoom() < 12 && wfsLayer) {
-                map.removeLayer(wfsLayer);
-                wfsLayer = null;
+            if (map.getZoom() >= 12) {
+                $.ajax({
+                    url: "https://environment.data.gov.uk/spatialdata/flood-map-for-planning-rivers-and-sea-flood-zone-2/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=flood-map-for-planning-rivers-and-sea-flood-zone-2&outputFormat=application/json",
+                    success: function(data) {
+                        var geojsonLayer = L.geoJSON(data, {
+                            onEachFeature: function (feature, layer) {
+                                layer.bindPopup("Flood Zone 2: " + feature.properties.description);
+                            }
+                        });
+                        floodLayerGroup.clearLayers();
+                        floodLayerGroup.addLayer(geojsonLayer);
+                        map.addLayer(floodLayerGroup);
+                    }
+                });
+            } else {
+                map.removeLayer(floodLayerGroup);
             }
         }
 
@@ -88,6 +97,17 @@
                 }
             });
         }
+
+        // Add layer control
+        var baseMaps = {
+            "Base Map": baseLayer
+        };
+
+        var overlayMaps = {
+            "Flood Zones": floodLayerGroup
+        };
+
+        L.control.layers(baseMaps, overlayMaps).addTo(map);
     </script>
 </body>
 </html>
