@@ -1,148 +1,93 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Leaflet Map with WFS Layers</title>
+    <title>Leaflet Map with Flood Zones</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw/dist/leaflet.draw.css" />
     <style>
-        #map { height: 100vh; }
-        .custom-control { background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 15px rgba(0,0,0,0.2); }
+        #map { height: 600px; }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-omnivore@0.3.3/leaflet-omnivore.min.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw/dist/leaflet.draw.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
-        // Initialize the Map
-        const map = L.map('map').setView([54.0, -2.0], 6);
+        // Initialize the map
+        var map = L.map('map').setView([54.0, -2.0], 6); // Centered on the UK
 
-        // Add UK OpenStreetMap Base Layer
+        // Add a base layer (OpenStreetMap)
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            maxZoom: 19
         }).addTo(map);
 
-        // Add Layer Control
-        const layerControl = L.control.layers().addTo(map);
-
-        // Add Zoom Level Conditional Loading
-        map.on('zoomend', function() {
-            if (map.getZoom() >= 10) {
-                loadLayers();
-            }
-        });
-
-        // Function to Load Layers
-        const layers = {};
-        function loadLayers() {
-            if (!layers.exampleLayer) {
-                const wfsLayer = L.geoJson(null, {
-                    onEachFeature: function (feature, layer) {
-                        layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
-                    }
-                });
-                layers.exampleLayer = omnivore.wfs('https://example.com/wfs', {
-                    layers: 'exampleLayer',
-                    format: 'geojson'
-                }, wfsLayer).addTo(map);
-                layerControl.addOverlay(layers.exampleLayer, 'Example Layer');
+        // WFS Layer
+        var wfsLayer = null;
+        function loadWfsLayer() {
+            if (map.getZoom() >= 12 && !wfsLayer) {
+                wfsLayer = L.tileLayer.wms("https://environment.data.gov.uk/spatialdata/flood-map-for-planning-rivers-and-sea-flood-zone-2/wfs", {
+                    layers: 'flood-map-for-planning-rivers-and-sea-flood-zone-2',
+                    format: 'image/png',
+                    transparent: true,
+                    attribution: "Environment Agency"
+                }).addTo(map);
+            } else if (map.getZoom() < 12 && wfsLayer) {
+                map.removeLayer(wfsLayer);
+                wfsLayer = null;
             }
         }
 
-        // Functions to Add/Remove Layers
-        function addLayer() {
-            const newLayerUrl = prompt('Enter WFS Layer URL:');
-            const layerName = prompt('Enter Layer Name:');
-            if (newLayerUrl && layerName) {
-                const newLayer = L.geoJson(null, {
-                    onEachFeature: function (feature, layer) {
-                        layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
-                    }
-                });
-                omnivore.wfs(newLayerUrl, {
-                    layers: layerName,
-                    format: 'geojson'
-                }, newLayer).addTo(map);
-                layers[layerName] = newLayer;
-                layerControl.addOverlay(newLayer, layerName);
-                localStorage.setItem(layerName, newLayerUrl); // Save to local storage
-                updateLayerDropdown(); // Update dropdown list
-            }
-        }
+        // Load WFS layer based on zoom level
+        map.on('zoomend', loadWfsLayer);
 
-        function removeLayer() {
-            const layerName = document.getElementById('layerSelect').value;
-            if (layers[layerName]) {
-                map.removeLayer(layers[layerName]);
-                layerControl.removeLayer(layers[layerName]);
-                delete layers[layerName];
-                localStorage.removeItem(layerName); // Remove from local storage
-                updateLayerDropdown(); // Update dropdown list
-            } else {
-                alert('Layer not found!');
-            }
-        }
-
-        // Add Custom Control Buttons
-        const customControl = L.Control.extend({
-            options: { position: 'topright' },
-            onAdd: function (map) {
-                const container = L.DomUtil.create('div', 'custom-control');
-                container.innerHTML = `
-                    <button onclick="addLayer()">Add Layer</button>
-                    <select id="layerSelect"></select>
-                    <button onclick="removeLayer()">Remove Layer</button>
-                `;
-                return container;
+        // Initialize the Draw Control
+        var drawControl = new L.Control.Draw({
+            draw: {
+                polyline: true,
+                polygon: true,
+                marker: false,
+                circle: false,
+                rectangle: false,
+                circlemarker: false
+            },
+            edit: {
+                featureGroup: new L.FeatureGroup().addTo(map)
             }
         });
-        map.addControl(new customControl());
+        map.addControl(drawControl);
 
-        // Save and Load Layers from Local Storage
-        window.addEventListener('unload', function() {
-            localStorage.setItem('layers', JSON.stringify(Object.keys(layers)));
+        // Handle the creation of new layers (polygons/lines)
+        map.on(L.Draw.Event.CREATED, function (e) {
+            var layer = e.layer;
+            map.addLayer(layer);
+            analyzeLayer(layer);
         });
 
-        window.addEventListener('load', function() {
-            const savedLayers = JSON.parse(localStorage.getItem('layers'));
-            if (savedLayers) {
-                savedLayers.forEach(layerName => {
-                    addLayerFromStorage(layerName);
-                });
-            }
-        });
+        // Function to analyze interaction with WFS features
+        function analyzeLayer(layer) {
+            var drawnFeatures = layer.toGeoJSON();
+            var intersectedFeatures = [];
 
-        function addLayerFromStorage(layerName) {
-            const newLayerUrl = localStorage.getItem(layerName);
-            if (newLayerUrl) {
-                const newLayer = L.geoJson(null, {
-                    onEachFeature: function (feature, layer) {
-                        layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
-                    }
-                });
-                omnivore.wfs(newLayerUrl, {
-                    layers: layerName,
-                    format: 'geojson'
-                }, newLayer).addTo(map);
-                layers[layerName] = newLayer;
-                layerControl.addOverlay(newLayer, layerName);
-                updateLayerDropdown(); // Update dropdown list
-            }
-        }
+            $.ajax({
+                url: "https://environment.data.gov.uk/spatialdata/flood-map-for-planning-rivers-and-sea-flood-zone-2/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=flood-map-for-planning-rivers-and-sea-flood-zone-2&outputFormat=application/json",
+                success: function(data) {
+                    var floodFeatures = data.features;
 
-        // Update Layer Dropdown List
-        function updateLayerDropdown() {
-            const layerSelect = document.getElementById('layerSelect');
-            layerSelect.innerHTML = '';
-            Object.keys(layers).forEach(layerName => {
-                const option = document.createElement('option');
-                option.value = layerName;
-                option.textContent = layerName;
-                layerSelect.appendChild(option);
+                    floodFeatures.forEach(function(floodFeature) {
+                        if (turf.booleanIntersects(drawnFeatures, floodFeature)) {
+                            intersectedFeatures.push(floodFeature);
+                        }
+                    });
+
+                    // Display summary
+                    alert("Number of intersected flood features: " + intersectedFeatures.length);
+                }
             });
         }
     </script>
+    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
 </body>
 </html>
