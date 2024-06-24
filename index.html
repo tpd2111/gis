@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Leaflet Map with WFS Layers</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map { height: 100vh; }
+        .layer-control { background: white; padding: 10px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="layer-control">
+        <button onclick="addLayer()">Add Layer</button>
+        <button onclick="removeLayer()">Remove Layer</button>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-omnivore@0.3.3/leaflet-omnivore.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
+    <script>
+        // Step 2: Initialize the Map
+        const map = L.map('map').setView([54.0, -2.0], 6);
+
+        // Step 3: Add UK OpenStreetMap Base Layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Step 4: Add Layer Control
+        const layerControl = L.control.layers().addTo(map);
+
+        // Step 5: Add Zoom Level Conditional Loading
+        map.on('zoomend', function() {
+            if (map.getZoom() >= 10) {
+                loadLayers();
+            }
+        });
+
+        // Step 6: Function to Load Layers
+        const layers = {};
+        function loadLayers() {
+            if (!layers.exampleLayer) {
+                const wfsLayer = L.geoJson(null, {
+                    onEachFeature: function (feature, layer) {
+                        layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
+                    }
+                });
+                layers.exampleLayer = omnivore.wfs('https://example.com/wfs', {
+                    layers: 'exampleLayer',
+                    format: 'geojson'
+                }, wfsLayer).addTo(map);
+                layerControl.addOverlay(layers.exampleLayer, 'Example Layer');
+            }
+        }
+
+        // Step 7: Functions to Add/Remove Layers
+        function addLayer() {
+            const newLayerUrl = prompt('Enter WFS Layer URL:');
+            const layerName = prompt('Enter Layer Name:');
+            if (newLayerUrl && layerName) {
+                const newLayer = L.geoJson(null, {
+                    onEachFeature: function (feature, layer) {
+                        layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
+                    }
+                });
+                omnivore.wfs(newLayerUrl, {}, newLayer).addTo(map);
+                layers[layerName] = newLayer;
+                layerControl.addOverlay(newLayer, layerName);
+            }
+        }
+
+        function removeLayer() {
+            const layerName = prompt('Enter Layer Name to Remove:');
+            if (layers[layerName]) {
+                map.removeLayer(layers[layerName]);
+                layerControl.removeLayer(layers[layerName]);
+                delete layers[layerName];
+            } else {
+                alert('Layer not found!');
+            }
+        }
+
+        // Step 8: Save and Load Layers from Local Storage
+        window.addEventListener('unload', function() {
+            localStorage.setItem('layers', JSON.stringify(Object.keys(layers)));
+        });
+
+        window.addEventListener('load', function() {
+            const savedLayers = JSON.parse(localStorage.getItem('layers'));
+            if (savedLayers) {
+                savedLayers.forEach(layerName => {
+                    addLayerFromStorage(layerName);
+                });
+            }
+        });
+
+        function addLayerFromStorage(layerName) {
+            const newLayerUrl = localStorage.getItem(layerName);
+            if (newLayerUrl) {
+                const newLayer = L.geoJson(null, {
+                    onEachFeature: function (feature, layer) {
+                        layer.bindPopup(Object.keys(feature.properties).map(key => key + ": " + feature.properties[key]).join("<br />"));
+                    }
+                });
+                omnivore.wfs(newLayerUrl, {}, newLayer).addTo(map);
+                layers[layerName] = newLayer;
+                layerControl.addOverlay(newLayer, layerName);
+            }
+        }
+    </script>
+</body>
+</html>
