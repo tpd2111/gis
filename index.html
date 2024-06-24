@@ -7,39 +7,35 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         #map { height: 100vh; }
-        .layer-control { background: white; padding: 10px; }
+        .custom-control { background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 15px rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <div class="layer-control">
-        <button onclick="addLayer()">Add Layer</button>
-        <button onclick="removeLayer()">Remove Layer</button>
-    </div>
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-omnivore@0.3.3/leaflet-omnivore.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
     <script>
-        // Step 2: Initialize the Map
+        // Initialize the Map
         const map = L.map('map').setView([54.0, -2.0], 6);
 
-        // Step 3: Add UK OpenStreetMap Base Layer
+        // Add UK OpenStreetMap Base Layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Step 4: Add Layer Control
+        // Add Layer Control
         const layerControl = L.control.layers().addTo(map);
 
-        // Step 5: Add Zoom Level Conditional Loading
+        // Add Zoom Level Conditional Loading
         map.on('zoomend', function() {
             if (map.getZoom() >= 10) {
                 loadLayers();
             }
         });
 
-        // Step 6: Function to Load Layers
+        // Function to Load Layers
         const layers = {};
         function loadLayers() {
             if (!layers.exampleLayer) {
@@ -56,7 +52,7 @@
             }
         }
 
-        // Step 7: Functions to Add/Remove Layers
+        // Functions to Add/Remove Layers
         function addLayer() {
             const newLayerUrl = prompt('Enter WFS Layer URL:');
             const layerName = prompt('Enter Layer Name:');
@@ -69,6 +65,7 @@
                 omnivore.wfs(newLayerUrl, {}, newLayer).addTo(map);
                 layers[layerName] = newLayer;
                 layerControl.addOverlay(newLayer, layerName);
+                localStorage.setItem(layerName, newLayerUrl); // Save to local storage
             }
         }
 
@@ -78,12 +75,27 @@
                 map.removeLayer(layers[layerName]);
                 layerControl.removeLayer(layers[layerName]);
                 delete layers[layerName];
+                localStorage.removeItem(layerName); // Remove from local storage
             } else {
                 alert('Layer not found!');
             }
         }
 
-        // Step 8: Save and Load Layers from Local Storage
+        // Add Custom Control Buttons
+        const customControl = L.Control.extend({
+            options: { position: 'topright' },
+            onAdd: function (map) {
+                const container = L.DomUtil.create('div', 'custom-control');
+                container.innerHTML = `
+                    <button onclick="addLayer()">Add Layer</button>
+                    <button onclick="removeLayer()">Remove Layer</button>
+                `;
+                return container;
+            }
+        });
+        map.addControl(new customControl());
+
+        // Save and Load Layers from Local Storage
         window.addEventListener('unload', function() {
             localStorage.setItem('layers', JSON.stringify(Object.keys(layers)));
         });
